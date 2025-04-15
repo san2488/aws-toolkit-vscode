@@ -54,6 +54,7 @@ packages/*/resources/css/icons.css
 # local configuration
 .local.env
 *.config.local.json
+mise.toml
 
 # Created by `npm run webRun` when testing extension in web mode
 .vscode-test-web

@@ -4,8 +4,8 @@
  */
 
 import { Tool } from '@amzn/codewhisperer-streaming'
-import toolsJson from './tools/tool_index.json'
-import { getLogger } from 'aws-core-vscode/shared'
+import toolsJson from './tool_index.json'
+import { getLogger } from '../../shared/logger/logger'
 
 /**
  * Interface for MCP Hub that provides tools
@@ -127,7 +127,7 @@ export class ToolManager {
             return this.cachedNoWriteTools
         }
 
-        const allTools = await this.getTools()
+        const allTools = await this.getTools(true)
         
         // Filter out tools that can modify files
         this.cachedNoWriteTools = allTools.filter(tool => {

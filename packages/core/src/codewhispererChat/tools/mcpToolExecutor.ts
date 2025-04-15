@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ToolManager } from '../toolManager'
+import { ToolManager } from './toolManager'
 import { getLogger } from '../../shared/logger/logger'
 import { ToolkitError } from '../../shared/errors'
 

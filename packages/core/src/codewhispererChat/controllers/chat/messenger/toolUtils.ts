@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ToolManager } from '../../../toolManager'
+import { ToolManager } from '../../../tools/toolManager'
 import { McpToolExecutor } from '../../../tools/mcpToolExecutor'
 import { getLogger } from '../../../../shared/logger/logger'
 

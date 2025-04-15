@@ -62,7 +62,7 @@ export class McpHub {
     isConnecting: boolean = false
 
     constructor(clientVersion: string) {
-        this.watchMcpSettingsFile()
+        // this.watchMcpSettingsFile()
         this.initializeMcpServers()
     }
 

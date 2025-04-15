@@ -61,7 +61,7 @@ import { ChatStream } from '../../../tools/chatStream'
 import path from 'path'
 import { CommandValidation, ExecuteBashParams } from '../../../tools/executeBash'
 import { extractErrorInfo } from '../../../../shared/utilities/messageUtil'
-import { ToolManager } from '../../../toolManager'
+import { ToolManager } from '../../../tools/toolManager'
 import { Change } from 'diff'
 import { FsWriteParams } from '../../../tools/fsWrite'
 import { AsyncEventProgressMessage } from '../../../../amazonq/commons/connector/connectorMessages'
@@ -200,7 +200,7 @@ export class Messenger {
         triggerID: string,
         triggerPayload: TriggerPayload
     ) {
-        getLogger().info("Sending AIResponse");
+        getLogger().info("Sending AIResponse again");
         let message = ''
         const messageID = response.$metadata.requestId ?? ''
         let codeReference: CodeReference[] = []
@@ -241,7 +241,9 @@ export class Messenger {
 
         await waitTimeout(
             async () => {
+                getLogger().info("in waitTimeout")
                 for await (const chatEvent of response.message!) {
+                    getLogger().info("in waitTimeout await")
                     if (this.isTriggerCancelled(triggerID)) {
                         return
                     }
@@ -298,9 +300,11 @@ export class Messenger {
                                 throw error
                             }
                             const toolManager = ToolManager.getInstance()
+                            getLogger().info("got toolmanager")
                             const availableTools = await (session.pairProgrammingModeOn ? 
                                 toolManager.getTools() : 
                                 toolManager.getNoWriteTools())
+                            getLogger().info(`available tools: ${JSON.stringify(availableTools)}`)
                             const availableToolsNames = availableTools.map(
                                 (item) => item.toolSpecification?.name
                             )

@@ -4,7 +4,7 @@
  */
 
 import { McpHub } from './McpHub'
-import { ToolManager } from '../toolManager'
+import { ToolManager } from '../tools/toolManager'
 import { getLogger } from '../../shared/logger/logger'
 
 /**
