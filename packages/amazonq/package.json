@@ -70,7 +70,8 @@
         "generateSettings": "ts-node ../../scripts/generateSettings.ts"
     },
     "dependencies": {
-        "aws-core-vscode": "file:../core/"
+        "aws-core-vscode": "file:../core/",
+        "zod": "^3.22.4"
     },
     "contributesComments": {
         "configuration": {
@@ -86,6 +87,21 @@
                     "type": "boolean",
                     "default": true,
                     "markdownDescription": "%AWS.configuration.description.amazonq.telemetry%"
+                },
+                "amazonQ.mcp.mode": {
+                    "type": "string",
+                    "enum": [
+                        "full",
+                        "server-use-only",
+                        "off"
+                    ],
+                    "default": "full",
+                    "markdownDescription": "Controls how Amazon Q interacts with MCP servers. 'full' enables all MCP features, 'server-use-only' allows using existing servers but not creating new ones, 'off' disables MCP functionality."
+                },
+                "amazonQ.mcp.settingsPath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Custom path to the MCP settings file. If empty, the default location (~/.aws/amazonq/mcp.json) will be used."
                 },
                 "amazonQ.suppressPrompts": {
                     "type": "object",

@@ -11,6 +11,8 @@
 
 export const amazonqSettings = {
     "amazonQ.telemetry": {},
+    "amazonQ.mcp.mode": {},
+    "amazonQ.mcp.settingsPath": {},
     "amazonQ.suppressPrompts": {
         "createCredentialsProfile": {},
         "codeWhispererNewWelcomeMessage": {},

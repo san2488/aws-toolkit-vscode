@@ -61,7 +61,7 @@ import { ChatStream } from '../../../tools/chatStream'
 import path from 'path'
 import { CommandValidation, ExecuteBashParams } from '../../../tools/executeBash'
 import { extractErrorInfo } from '../../../../shared/utilities/messageUtil'
-import { noWriteTools, tools } from '../../../constants'
+import { ToolManager } from '../../../toolManager'
 import { Change } from 'diff'
 import { FsWriteParams } from '../../../tools/fsWrite'
 import { AsyncEventProgressMessage } from '../../../../amazonq/commons/connector/connectorMessages'
@@ -200,6 +200,7 @@ export class Messenger {
         triggerID: string,
         triggerPayload: TriggerPayload
     ) {
+        getLogger().info("Sending AIResponse");
         let message = ''
         const messageID = response.$metadata.requestId ?? ''
         let codeReference: CodeReference[] = []
@@ -296,7 +297,11 @@ export class Messenger {
                                 // throw it out to allow the error to be handled in the catch block
                                 throw error
                             }
-                            const availableToolsNames = (session.pairProgrammingModeOn ? tools : noWriteTools).map(
+                            const toolManager = ToolManager.getInstance()
+                            const availableTools = await (session.pairProgrammingModeOn ? 
+                                toolManager.getTools() : 
+                                toolManager.getNoWriteTools())
+                            const availableToolsNames = availableTools.map(
                                 (item) => item.toolSpecification?.name
                             )
                             if (!availableToolsNames.includes(toolUse.name)) {

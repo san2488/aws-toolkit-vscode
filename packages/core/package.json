@@ -24,6 +24,7 @@
         "./amazonqScan": "./dist/src/amazonqScan/index.js",
         "./amazonqTest": "./dist/src/amazonqTest/index.js",
         "./codewhispererChat": "./dist/src/codewhispererChat/index.js",
+        "./codewhispererChat/mcp": "./dist/src/codewhispererChat/mcp/index.js",
         "./test": "./dist/src/test/index.js",
         "./testWeb": "./dist/src/testWeb/index.js",
         "./login": "./dist/src/login/webview/index.js",
@@ -576,7 +577,8 @@
         "winston": "^3.11.0",
         "winston-transport": "^4.6.0",
         "xml2js": "^0.6.1",
-        "yaml-cfn": "^0.3.2"
+        "yaml-cfn": "^0.3.2",
+        "zod": "^3.22.4"
     },
     "overrides": {
         "webfont": {
