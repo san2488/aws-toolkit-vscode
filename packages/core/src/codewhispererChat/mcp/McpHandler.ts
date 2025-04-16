@@ -35,23 +35,6 @@ export class McpHandler {
     }
 
     /**
-     * Parses a message for MCP resource access
-     * @param message The message to parse
-     * @returns The resource access details if found, null otherwise
-     */
-    parseMcpResourceAccess(message: string): { serverName: string, uri: string } | null {
-        const mcpResourceRegex = /<access_mcp_resource>\s*<server_name>(.*?)<\/server_name>\s*<uri>(.*?)<\/uri>\s*<\/access_mcp_resource>/i
-        const match = message.match(mcpResourceRegex)
-        
-        if (match) {
-            const [, serverName, uri] = match
-            return { serverName, uri }
-        }
-        
-        return null
-    }
-
-    /**
      * Handles an MCP tool call
      * @param serverName The name of the server
      * @param toolName The name of the tool
@@ -64,7 +47,7 @@ export class McpHandler {
             
             // Format the response
             const formattedResponse = result.content
-                .map(item => {
+                .map((item: any) => {
                     if (item.type === 'text') {
                         return item.text
                     } else if (item.type === 'image') {
@@ -86,29 +69,7 @@ export class McpHandler {
     }
 
     /**
-     * Handles an MCP resource access
-     * @param serverName The name of the server
-     * @param uri The URI of the resource
-     * @returns The formatted response from the resource
-     */
-    async handleMcpResourceAccess(serverName: string, uri: string): Promise<string> {
-        try {
-            const result = await this.mcpHub.readResource(serverName, uri)
-            
-            // Format the response
-            const formattedResponse = result.contents
-                .map(item => item.text || '')
-                .filter(Boolean)
-                .join('\n\n')
-                
-            return formattedResponse
-        } catch (error) {
-            return `Error accessing MCP resource: ${error instanceof Error ? error.message : String(error)}`
-        }
-    }
-
-    /**
-     * Processes a message for MCP tool calls or resource access
+     * Processes a message for MCP tool calls
      * @param message The message to process
      * @returns The processed message with MCP responses, or null if no MCP calls were found
      */
@@ -118,14 +79,6 @@ export class McpHandler {
         if (mcpToolCall) {
             const { serverName, toolName, args } = mcpToolCall
             const response = await this.handleMcpToolCall(serverName, toolName, args)
-            return response
-        }
-        
-        // Check for MCP resource access
-        const mcpResourceAccess = this.parseMcpResourceAccess(message)
-        if (mcpResourceAccess) {
-            const { serverName, uri } = mcpResourceAccess
-            const response = await this.handleMcpResourceAccess(serverName, uri)
             return response
         }
         
@@ -164,17 +117,6 @@ Usage:
 }
 </arguments>
 </use_mcp_tool>
-
-### access_mcp_resource
-Description: Request to access a resource provided by a connected MCP server. Resources represent data sources that can be used as context.
-Parameters:
-- server_name: (required) The name of the MCP server providing the resource
-- uri: (required) The URI identifying the specific resource to access
-Usage:
-<access_mcp_resource>
-<server_name>server name here</server_name>
-<uri>resource URI here</uri>
-</access_mcp_resource>
 `;
 
         // Add connected servers information
@@ -197,20 +139,6 @@ Usage:
                         if (tool.inputSchema) {
                             mcpPrompt += `    Input Schema:\n    ${JSON.stringify(tool.inputSchema, null, 2).split("\n").join("\n    ")}\n`;
                         }
-                    }
-                }
-                
-                if (server.resourceTemplates && server.resourceTemplates.length > 0) {
-                    mcpPrompt += `\n#### Resource Templates\n`;
-                    for (const template of server.resourceTemplates) {
-                        mcpPrompt += `- ${template.uriTemplate} (${template.name}): ${template.description || 'No description'}\n`;
-                    }
-                }
-                
-                if (server.resources && server.resources.length > 0) {
-                    mcpPrompt += `\n#### Direct Resources\n`;
-                    for (const resource of server.resources) {
-                        mcpPrompt += `- ${resource.uri} (${resource.name}): ${resource.description || 'No description'}\n`;
                     }
                 }
             }

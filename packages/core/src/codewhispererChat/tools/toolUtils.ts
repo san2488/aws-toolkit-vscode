@@ -15,12 +15,15 @@ import {
     fsReadToolResponseSize,
 } from './toolShared'
 import { ListDirectory, ListDirectoryParams } from './listDirectory'
+import { getLogger } from '../../shared/logger/logger'
+import { InvocableMcpTool } from './mcpTool'
 
 export enum ToolType {
     FsRead = 'fsRead',
     FsWrite = 'fsWrite',
     ExecuteBash = 'executeBash',
     ListDirectory = 'listDirectory',
+    McpTool = 'mcpTool',
 }
 
 export type Tool =
@@ -28,6 +31,7 @@ export type Tool =
     | { type: ToolType.FsWrite; tool: FsWrite }
     | { type: ToolType.ExecuteBash; tool: ExecuteBash }
     | { type: ToolType.ListDirectory; tool: ListDirectory }
+    | { type: ToolType.McpTool; tool: InvocableMcpTool }
 
 export class ToolUtils {
     static displayName(tool: Tool): string {
@@ -40,6 +44,8 @@ export class ToolUtils {
                 return 'Execute shell command'
             case ToolType.ListDirectory:
                 return 'List directory from filesystem'
+            case ToolType.McpTool:
+                return tool.tool.name
         }
     }
 
@@ -53,6 +59,8 @@ export class ToolUtils {
                 return tool.tool.requiresAcceptance()
             case ToolType.ListDirectory:
                 return tool.tool.requiresAcceptance()
+            default:
+                return { requiresAcceptance: false }
         }
     }
 
@@ -74,6 +82,8 @@ export class ToolUtils {
             case ToolType.ExecuteBash:
                 return tool.tool.invoke(updates ?? undefined, cancellationToken)
             case ToolType.ListDirectory:
+                return tool.tool.invoke(updates)
+            case ToolType.McpTool:
                 return tool.tool.invoke(updates)
         }
     }
@@ -109,6 +119,9 @@ export class ToolUtils {
             case ToolType.ListDirectory:
                 tool.tool.queueDescription(updates, requiresAcceptance)
                 break
+            case ToolType.McpTool:
+                tool.tool.queueDescription(updates)
+                break
         }
     }
 
@@ -121,6 +134,8 @@ export class ToolUtils {
             case ToolType.ExecuteBash:
                 return tool.tool.validate()
             case ToolType.ListDirectory:
+                return tool.tool.validate()
+            case ToolType.McpTool:
                 return tool.tool.validate()
         }
     }
@@ -160,6 +175,13 @@ export class ToolUtils {
                         tool: new ListDirectory(value.input as unknown as ListDirectoryParams),
                     }
                 default:
+                    if (value.name && value.name.startsWith('mcp_')) {
+                        return {
+                            type: ToolType.McpTool,
+                            tool: new InvocableMcpTool({ toolName: value.name, args: value.input })
+                        }
+                    }
+                    getLogger().warn(`ToolUtils: Unsupported tool requested: "${value.name}"`)
                     return {
                         toolUseId: value.toolUseId,
                         content: [
@@ -171,6 +193,7 @@ export class ToolUtils {
                     }
             }
         } catch (error) {
+            getLogger().error(`ToolUtils: Error creating tool "${value.name}": ${error}`)
             return mapErr(error)
         }
     }

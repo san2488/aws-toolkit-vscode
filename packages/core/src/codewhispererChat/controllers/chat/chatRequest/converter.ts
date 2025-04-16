@@ -10,6 +10,7 @@ import { getLogger } from '../../../../shared/logger/logger'
 import vscode from 'vscode'
 import { noWriteTools, tools } from '../../../constants'
 import { messageToChatMessage } from '../../../../shared/db/chatDb/util'
+import { ToolManager } from '../../../tools/toolManager'
 
 const fqnNameSizeDownLimit = 1
 const fqnNameSizeUpLimit = 256
@@ -156,7 +157,19 @@ export function triggerPayloadToChatRequest(triggerPayload: TriggerPayload): {
         }
     }
 
-    // service will throw validation exception if string is empty
+    // Get tools from ToolManager (which now loads synchronously during initialization)
+    const toolManager = ToolManager.getInstance()
+    let availableTools
+    try {
+        availableTools = triggerPayload.pairProgrammingModeOn ? 
+            toolManager.getToolsSync() : 
+            toolManager.getNoWriteToolsSync()
+        getLogger().info(`Including ${availableTools.length} tools in chat request (including MCP tools if available)`)
+    } catch (error) {
+        getLogger().error(`Failed to get tools: ${error}. Falling back to static tool definitions.`)
+        availableTools = triggerPayload.pairProgrammingModeOn ? tools : noWriteTools
+    }
+
     const customizationArn: string | undefined = undefinedIfEmpty(triggerPayload.customization.arn)
     const chatTriggerType = triggerPayload.trigger === ChatTriggerType.InlineChatMessage ? 'INLINE_CHAT' : 'MANUAL'
     const history =
@@ -178,7 +191,7 @@ export function triggerPayloadToChatRequest(triggerPayload: TriggerPayload): {
                             workspaceFolders: vscode.workspace.workspaceFolders?.map(({ uri }) => uri.fsPath) ?? [],
                         },
                         additionalContext: triggerPayload.additionalContents,
-                        tools: triggerPayload.pairProgrammingModeOn ? tools : noWriteTools,
+                        tools: availableTools,
                         ...(triggerPayload.toolResults !== undefined &&
                             triggerPayload.toolResults !== null && { toolResults: triggerPayload.toolResults }),
                     },

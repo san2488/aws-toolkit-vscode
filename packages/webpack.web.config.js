@@ -12,6 +12,7 @@
 const webpack = require('webpack')
 const { merge } = require('webpack-merge')
 const baseConfigFactory = require('./webpack.base.config')
+const NodePolyfillPlugin = require('node-polyfill-webpack-plugin')
 
 module.exports = (env, argv) => {
     const baseConfig = baseConfigFactory(env, argv)
@@ -36,6 +37,8 @@ module.exports = (env, argv) => {
                 NODE_DEBUG: 'development',
                 READABLE_STREAM: 'disable',
             }),
+            // Add NodePolyfillPlugin to handle node: protocol imports
+            new NodePolyfillPlugin(),
             /**
              * HACK: the HttpResourceFetcher breaks Web mode if imported, BUT we still dynamically import this module for non web mode
              * environments. The following allows compilation to pass in Web mode by never bundling the module in the final output for web mode.
@@ -62,6 +65,14 @@ module.exports = (env, argv) => {
                 crypto: require.resolve('crypto-browserify'),
                 'fs-extra': false,
                 perf_hooks: false, // should be using globalThis.performance instead
+                // Add node: protocol handling
+                'node:process': require.resolve('process/browser'),
+                'node:timers': require.resolve('timers-browserify'),
+                'node:stream': require.resolve('stream-browserify'),
+                'node:util': require.resolve('util/'),
+                'node:buffer': require.resolve('buffer/'),
+                'node:path': require.resolve('path-browserify'),
+                'node:os': require.resolve('os-browserify/browser'),
 
                 // *** If one of these modules actually gets used an error will be raised ***
                 // You may see something like: "TypeError: path_ignored_0.join is not a function"

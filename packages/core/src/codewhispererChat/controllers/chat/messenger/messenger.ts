@@ -243,7 +243,6 @@ export class Messenger {
             async () => {
                 getLogger().info("in waitTimeout")
                 for await (const chatEvent of response.message!) {
-                    getLogger().info("in waitTimeout await")
                     if (this.isTriggerCancelled(triggerID)) {
                         return
                     }
@@ -304,11 +303,21 @@ export class Messenger {
                             const availableTools = await (session.pairProgrammingModeOn ? 
                                 toolManager.getTools() : 
                                 toolManager.getNoWriteTools())
-                            getLogger().info(`available tools: ${JSON.stringify(availableTools)}`)
+                            getLogger().info(`Available tools count: ${availableTools.length}`)
+                            
+                            // Log available tool names to help debug MCP tool discovery
                             const availableToolsNames = availableTools.map(
                                 (item) => item.toolSpecification?.name
                             )
-                            if (!availableToolsNames.includes(toolUse.name)) {
+                            getLogger().info(`Available tool names: ${JSON.stringify(availableToolsNames)}`)
+                            
+                            // Check if the requested tool is an MCP tool
+                            if (toolUse.name && toolUse.name.startsWith('mcp_')) {
+                                getLogger().info(`Messenger: Attempting to use MCP tool: "${toolUse.name}"`)
+                                // Allow MCP tools to proceed even if not in availableToolsNames
+                                // They will be handled by the McpToolExecutor in toolUtils.ts
+                            } else if (!availableToolsNames.includes(toolUse.name)) {
+                                getLogger().error(`Tool ${toolUse.name} is not available in the current mode`)
                                 throw new Error(`Tool ${toolUse.name} is not available in the current mode`)
                             }
                             const tool = ToolUtils.tryFromToolUse(toolUse)

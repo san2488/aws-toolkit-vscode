@@ -172,7 +172,7 @@ export class ChatSession {
         const client = await createQDeveloperStreamingClient()
 
         const response = await client.sendMessage(chatRequest)
-        if (!response.sendMessageResponse) {
+        if (!response.sendMessageResponse) {``
             throw new ToolkitError(
                 `Empty chat response. Session id: ${this.sessionId} Request ID: ${response.$metadata.requestId}`
             )

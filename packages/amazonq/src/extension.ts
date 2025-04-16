@@ -114,6 +114,15 @@ export async function activateAmazonQCommon(context: vscode.ExtensionContext, is
 
     await initializeAuth(globals.loginManager)
 
+    // Initialize MCP components for Amazon Q
+    try {
+        const { initializeMcp } = await import('aws-core-vscode/codewhispererChat/mcp')
+        await initializeMcp(context)
+        getLogger().info('MCP components initialized successfully')
+    } catch (error) {
+        getLogger().error('Failed to initialize MCP components: %O', error)
+    }
+
     const extContext = {
         extensionContext: context,
     }

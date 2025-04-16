@@ -21,22 +21,6 @@ export interface McpTool {
     autoApprove?: boolean
 }
 
-// MCP resource definition
-export interface McpResource {
-    uri: string
-    name: string
-    mimeType?: string
-    description?: string
-}
-
-// MCP resource template definition
-export interface McpResourceTemplate {
-    uriTemplate: string
-    name: string
-    description?: string
-    mimeType?: string
-}
-
 // MCP server definition
 export interface McpServer {
     name: string
@@ -45,17 +29,6 @@ export interface McpServer {
     disabled?: boolean
     error?: string
     tools?: McpTool[]
-    resources?: McpResource[]
-    resourceTemplates?: McpResourceTemplate[]
-}
-
-// MCP resource response
-export interface McpResourceResponse {
-    contents: Array<{
-        uri: string
-        text?: string
-        binary?: string
-    }>
 }
 
 // MCP tool call response

@@ -1021,6 +1021,11 @@ export const createMynahUI = (
                     icon: MynahIcons.EXTERNAL,
                     description: 'Export chat',
                 },
+                {
+                    id: 'mcp_init',
+                    icon: MynahIcons.OK_CIRCLED,
+                    description: 'MCP Servers',
+                },
             ],
         },
     })

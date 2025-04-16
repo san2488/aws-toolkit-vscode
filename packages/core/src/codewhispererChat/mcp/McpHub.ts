@@ -1,8 +1,3 @@
-/*!
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as os from "os"
@@ -10,16 +5,22 @@ import * as vscode from "vscode"
 import { z } from "zod"
 import {
     McpMode,
-    McpResource,
-    McpResourceResponse,
-    McpResourceTemplate,
     McpServer,
     McpTool,
     McpToolCallResponse,
 } from "./types"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+import {
+    CallToolResultSchema,
+    ListToolsResultSchema,
+} from "@modelcontextprotocol/sdk/types.js"
 
 export type McpConnection = {
     server: McpServer
+    client?: Client
+    transport?: StdioClientTransport | SSEClientTransport
 }
 
 export type McpTransportType = "stdio" | "sse"
@@ -58,6 +59,7 @@ const McpSettingsSchema = z.object({
 
 export class McpHub {
     private disposables: vscode.Disposable[] = []
+    private callableServerNames: {[key: string]: string} = {}
     connections: McpConnection[] = []
     isConnecting: boolean = false
 
@@ -134,27 +136,6 @@ export class McpHub {
         }
     }
 
-    private async watchMcpSettingsFile(): Promise<void> {
-        const settingsPath = await this.getMcpSettingsFilePath()
-        
-        // Create file watcher
-        const fileWatcher = vscode.workspace.createFileSystemWatcher(settingsPath)
-        
-        // Watch for file changes
-        fileWatcher.onDidChange(async () => {
-            const settings = await this.readAndValidateMcpSettingsFile()
-            if (settings) {
-                try {
-                    await this.updateServerConnections(settings.mcpServers)
-                } catch (error) {
-                    console.error("Failed to process MCP settings change:", error)
-                }
-            }
-        })
-        
-        this.disposables.push(fileWatcher)
-    }
-
     private async initializeMcpServers(): Promise<void> {
         const settings = await this.readAndValidateMcpSettingsFile()
         if (settings) {
@@ -168,27 +149,99 @@ export class McpHub {
     ): Promise<void> {
         // Remove existing connection if it exists
         this.connections = this.connections.filter((conn) => conn.server.name !== name)
-
+        this.callableServerNames[name.replace(/-/g, '_')] = name
+        
         try {
-            // Create a mock server object for now
+            // Create a client for the MCP server
+            const client = new Client(
+                {
+                    name: "AWS-Toolkit-VSCode",
+                    version: "1.0.0", // Should use actual version
+                },
+                {
+                    capabilities: {},
+                }
+            )
+            
+            let transport: StdioClientTransport | SSEClientTransport
+            
+            if (config.transportType === "sse") {
+                transport = new SSEClientTransport(new URL(config.url), {})
+            } else {
+                transport = new StdioClientTransport({
+                    command: config.command,
+                    args: config.args,
+                    env: {
+                        ...config.env,
+                        ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+                    },
+                    stderr: "pipe", // necessary for stderr to be available
+                })
+            }
+            
+            transport.onerror = async (error) => {
+                console.error(`Transport error for "${name}":`, error)
+                const connection = this.connections.find((conn) => conn.server.name === name)
+                if (connection) {
+                    connection.server.status = "disconnected"
+                    this.appendErrorMessage(connection, error.message)
+                }
+            }
+            
+            transport.onclose = async () => {
+                const connection = this.connections.find((conn) => conn.server.name === name)
+                if (connection) {
+                    connection.server.status = "disconnected"
+                }
+            }
+            
             const connection: McpConnection = {
                 server: {
                     name,
                     config: JSON.stringify(config),
-                    status: "connected",
+                    status: "connecting",
                     disabled: config.disabled,
-                    tools: [],
-                    resources: [],
-                    resourceTemplates: []
-                }
+                    tools: []
+                },
+                client,
+                transport
             }
             
             this.connections.push(connection)
             
-            // Fetch tools and resources
+            if (config.transportType === "stdio") {
+                await transport.start()
+                const stderrStream = (transport as StdioClientTransport).stderr
+                if (stderrStream) {
+                    stderrStream.on("data", async (data: Buffer) => {
+                        const output = data.toString()
+                        // Check if output contains INFO level log
+                        const isInfoLog = /^\s*INFO\b/.test(output)
+                        
+                        if (isInfoLog) {
+                            // Log normal informational messages
+                            console.info(`Server "${name}" info:`, output)
+                        } else {
+                            // Treat as error log
+                            console.error(`Server "${name}" stderr:`, output)
+                            const connection = this.connections.find((conn) => conn.server.name === name)
+                            if (connection) {
+                                this.appendErrorMessage(connection, output)
+                            }
+                        }
+                    })
+                }
+                transport.start = async () => {} // No-op now, .connect() won't fail
+            }
+            
+            // Connect
+            await client.connect(transport)
+            
+            connection.server.status = "connected"
+            connection.server.error = ""
+            
+            // Fetch tools
             connection.server.tools = await this.fetchToolsList(name)
-            connection.server.resources = await this.fetchResourcesList(name)
-            connection.server.resourceTemplates = await this.fetchResourceTemplatesList(name)
         } catch (error) {
             // Update status with error
             const connection = this.connections.find((conn) => conn.server.name === name)
@@ -212,6 +265,16 @@ export class McpHub {
             if (!connection) {
                 throw new Error(`No connection found for server: ${serverName}`)
             }
+            
+            if (!connection.client) {
+                throw new Error(`MCP client not initialized for server: ${serverName}`)
+            }
+
+            const response = await connection.client.request(
+                { method: "tools/list" }, 
+                ListToolsResultSchema, 
+                { timeout: 5000 }
+            )
 
             // Get autoApprove settings from the configuration file
             const settingsPath = await this.getMcpSettingsFilePath()
@@ -219,103 +282,35 @@ export class McpHub {
             const config = JSON.parse(content)
             const autoApproveConfig = config.mcpServers[serverName]?.autoApprove || []
 
-            // For now, return a mock list of tools
-            const mockTools = [
-                {
-                    name: "read_internal_website",
-                    description: "Read content from internal Amazon websites",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            url: {
-                                type: "string",
-                                description: "URL of the internal website to read"
-                            }
-                        },
-                        required: ["url"]
-                    },
-                    autoApprove: autoApproveConfig.includes("read_internal_website")
-                },
-                {
-                    name: "search_internal_code",
-                    description: "Search across Amazon's internal code repositories",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            query: {
-                                type: "string",
-                                description: "Search query for internal code"
-                            }
-                        },
-                        required: ["query"]
-                    },
-                    autoApprove: autoApproveConfig.includes("search_internal_code")
-                }
-            ]
+            // Mark tools as always allowed based on settings
+            const tools = (response?.tools || []).map((tool) => ({
+                ...tool,
+                autoApprove: autoApproveConfig.includes(tool.name),
+            }))
 
-            console.log(`Fetched ${mockTools.length} tools from server ${serverName}`)
-            return mockTools
+            console.log(`Fetched ${tools.length} tools from server ${serverName}`)
+            return tools
         } catch (error) {
             console.error(`Failed to fetch tools for ${serverName}:`, error)
             return []
         }
     }
 
-    private async fetchResourcesList(serverName: string): Promise<McpResource[]> {
-        try {
-            const connection = this.connections.find((conn) => conn.server.name === serverName)
-            
-            if (!connection) {
-                throw new Error(`No connection found for server: ${serverName}`)
-            }
-            
-            // For now, return a mock list of resources
-            const mockResources = [
-                {
-                    uri: "wiki://amazon/ModelContextProtocol",
-                    name: "MCP Documentation",
-                    mimeType: "text/html",
-                    description: "Documentation about the Model Context Protocol"
-                }
-            ]
-            
-            console.log(`Fetched ${mockResources.length} resources from server ${serverName}`)
-            return mockResources
-        } catch (error) {
-            console.error(`Failed to fetch resources for ${serverName}:`, error)
-            return []
-        }
-    }
 
-    private async fetchResourceTemplatesList(serverName: string): Promise<McpResourceTemplate[]> {
-        try {
-            const connection = this.connections.find((conn) => conn.server.name === serverName)
-            
-            if (!connection) {
-                throw new Error(`No connection found for server: ${serverName}`)
-            }
-            
-            // For now, return a mock list of resource templates
-            const mockTemplates = [
-                {
-                    uriTemplate: "wiki://amazon/{page}",
-                    name: "Amazon Wiki Page",
-                    description: "Access Amazon internal wiki pages",
-                    mimeType: "text/html"
-                }
-            ]
-            
-            console.log(`Fetched ${mockTemplates.length} resource templates from server ${serverName}`)
-            return mockTemplates
-        } catch (error) {
-            console.error(`Failed to fetch resource templates for ${serverName}:`, error)
-            return []
-        }
-    }
 
     async deleteConnection(name: string): Promise<void> {
         const connection = this.connections.find((conn) => conn.server.name === name)
         if (connection) {
+            try {
+                if (connection.transport) {
+                    await connection.transport.close()
+                }
+                if (connection.client) {
+                    await connection.client.close()
+                }
+            } catch (error) {
+                console.error(`Failed to close transport for ${name}:`, error)
+            }
             this.connections = this.connections.filter((conn) => conn.server.name !== name)
         }
     }
@@ -383,28 +378,13 @@ export class McpHub {
 
     // Public methods for tool and resource access
     
-    async readResource(serverName: string, uri: string): Promise<McpResourceResponse> {
-        const connection = this.connections.find((conn) => conn.server.name === serverName)
-        if (!connection) {
-            throw new Error(`No connection found for server: ${serverName}`)
-        }
-        if (connection.server.disabled) {
-            throw new Error(`Server "${serverName}" is disabled`)
-        }
-
-        // Mock response for now
-        return {
-            contents: [
-                {
-                    uri,
-                    text: `Mock resource content for ${uri}`
-                }
-            ]
-        }
+    async readResource(serverName: string, uri: string): Promise<any> {
+        throw new Error('Resources are not supported')
     }
 
     async callTool(serverName: string, toolName: string, toolArguments?: Record<string, unknown>): Promise<McpToolCallResponse> {
-        const connection = this.connections.find((conn) => conn.server.name === serverName)
+        const callableServerName: string = this.callableServerNames[serverName]
+        const connection = this.connections.find((conn) => conn.server.name === callableServerName)
         if (!connection) {
             throw new Error(
                 `No connection found for server: ${serverName}. Please make sure to use MCP servers available under 'Connected MCP Servers'.`
@@ -415,15 +395,37 @@ export class McpHub {
             throw new Error(`Server "${serverName}" is disabled and cannot be used`)
         }
 
-        // Mock response for now
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: `Mock tool response for ${toolName} with arguments ${JSON.stringify(toolArguments)}`
-                }
-            ]
+        if (!connection.client) {
+            throw new Error(`MCP client not initialized for server: ${serverName}`)
         }
+
+        // Set default timeout
+        let timeout = 30000 // Default 30 seconds in milliseconds
+        
+        try {
+            // Try to get custom timeout from server config
+            const config = JSON.parse(connection.server.config)
+            if (config.timeout) {
+                // Convert seconds to milliseconds
+                timeout = config.timeout * 1000
+            }
+        } catch (error) {
+            console.error(`Failed to parse timeout configuration for server ${serverName}:`, error)
+        }
+
+        return await connection.client.request(
+            {
+                method: "tools/call",
+                params: {
+                    name: toolName,
+                    arguments: toolArguments,
+                }
+            },
+            CallToolResultSchema,
+            {
+                timeout,
+            }
+        )
     }
 
     dispose(): void {

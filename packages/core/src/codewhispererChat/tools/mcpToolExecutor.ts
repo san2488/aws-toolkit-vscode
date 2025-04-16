@@ -6,6 +6,7 @@
 import { ToolManager } from './toolManager'
 import { getLogger } from '../../shared/logger/logger'
 import { ToolkitError } from '../../shared/errors'
+import { McpToolCallResponse } from '../mcp'
 
 /**
  * Handles execution of MCP tools
@@ -17,7 +18,7 @@ export class McpToolExecutor {
      * @param args The arguments for the tool
      * @returns The result of the tool execution
      */
-    public static async execute(toolName: string, args: any): Promise<any> {
+    public static async execute(toolName: string, args: any): Promise<McpToolCallResponse> {
         const toolManager = ToolManager.getInstance()
         
         if (!toolManager.isMcpTool(toolName)) {
