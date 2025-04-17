@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { ToolManager } from '../tools/toolManager'
+import { getLogger } from '../../shared/logger/logger'
 
 export type McpConnection = {
     server: McpServer
@@ -54,6 +55,7 @@ export class McpHub implements McpToolProvider {
     private disposables: vscode.Disposable[] = []
     private callableServerNames: { [key: string]: string } = {}
     private connections: McpConnection[] = []
+    private settingsWatcher?: vscode.FileSystemWatcher
     isConnecting: boolean = false
 
     constructor(clientVersion: string) {
@@ -85,7 +87,7 @@ export class McpHub implements McpToolProvider {
                 await fs.mkdir(path.dirname(defaultPath), { recursive: true })
                 await fs.writeFile(defaultPath, JSON.stringify({ mcpServers: {} }, null, 2))
             } catch (err) {
-                console.error('Failed to create default MCP settings file:', err)
+                getLogger().error('Failed to create default MCP settings file:', err)
             }
             return defaultPath
         }
@@ -117,18 +119,64 @@ export class McpHub implements McpToolProvider {
 
             return result.data
         } catch (error) {
-            console.error('Failed to read MCP settings:', error)
+            getLogger().error('Failed to read MCP settings:', error)
             return undefined
+        }
+    }
+
+    /**
+     * Watch the MCP settings file for changes and reload servers when it changes
+     */
+    private async watchMcpSettingsFile(): Promise<void> {
+        try {
+            const settingsPath = await this.getMcpSettingsFilePath()
+            getLogger().info(`Setting up watcher for MCP settings file: ${settingsPath}`)
+
+            // Create a file system watcher for the settings file
+            this.settingsWatcher = vscode.workspace.createFileSystemWatcher(settingsPath, false, false, false)
+
+            // Watch for changes to the file
+            this.disposables.push(
+                this.settingsWatcher.onDidChange(async () => {
+                    getLogger().info('MCP settings file changed, reloading servers')
+                    const settings = await this.readAndValidateMcpSettingsFile()
+                    if (settings) {
+                        try {
+                            vscode.window.showInformationMessage('Updating MCP servers...')
+                            await this.updateServerConnections(settings.mcpServers)
+                            vscode.window.showInformationMessage('MCP servers updated')
+                        } catch (error) {
+                            getLogger().error('Failed to process MCP settings change:', error)
+                        }
+                    }
+                })
+            )
+
+            // Also watch for text document saves as a fallback
+            this.disposables.push(
+                vscode.workspace.onDidSaveTextDocument(async (document) => {
+                    if (document.uri.fsPath === settingsPath) {
+                        getLogger().info('MCP settings file saved, reloading servers')
+                        const settings = await this.readAndValidateMcpSettingsFile()
+                        if (settings) {
+                            try {
+                                await this.updateServerConnections(settings.mcpServers)
+                            } catch (error) {
+                                getLogger().error('Failed to process MCP settings save:', error)
+                            }
+                        }
+                    }
+                })
+            )
+        } catch (error) {
+            getLogger().error('Failed to set up MCP settings file watcher:', error)
         }
     }
 
     private async initializeMcpServers(): Promise<void> {
         const settings = await this.readAndValidateMcpSettingsFile()
         if (settings) {
-            await this.updateServerConnections(settings.mcpServers).then(() => {
-                const toolManager = ToolManager.getInstance()
-                toolManager.setMcpToolProvider(this)
-            })
+            await this.updateServerConnections(settings.mcpServers)
         }
     }
 
@@ -306,7 +354,7 @@ export class McpHub implements McpToolProvider {
         for (const name of currentNames) {
             if (!newNames.has(name)) {
                 await this.deleteConnection(name)
-                console.log(`Deleted MCP server: ${name}`)
+                getLogger().info(`Deleted MCP server: ${name}`)
             }
         }
 
@@ -319,20 +367,25 @@ export class McpHub implements McpToolProvider {
                 try {
                     await this.connectToServer(name, config)
                 } catch (error) {
-                    console.error(`Failed to connect to new MCP server ${name}:`, error)
+                    getLogger().error(`Failed to connect to new MCP server ${name}:`, error)
                 }
             } else if (JSON.stringify(JSON.parse(currentConnection.server.config)) !== JSON.stringify(config)) {
                 // Existing server with changed config
                 try {
                     await this.deleteConnection(name)
                     await this.connectToServer(name, config)
-                    console.log(`Reconnected MCP server with updated config: ${name}`)
+                    getLogger().info(`Reconnected MCP server with updated config: ${name}`)
                 } catch (error) {
-                    console.error(`Failed to reconnect MCP server ${name}:`, error)
+                    getLogger().error(`Failed to reconnect MCP server ${name}:`, error)
                 }
             }
             // If server exists with same config, do nothing
         }
+
+        // Update the tool manager with the new MCP tool provider
+        const toolManager = ToolManager.getInstance()
+        toolManager.setMcpToolProvider(this)
+
         this.isConnecting = false
     }
 
@@ -418,10 +471,16 @@ export class McpHub implements McpToolProvider {
         // Clean up connections and watchers
         for (const connection of this.connections) {
             this.deleteConnection(connection.server.name).catch((error) => {
-                console.error(`Failed to close connection for ${connection.server.name}:`, error)
+                getLogger().error(`Failed to close connection for ${connection.server.name}:`, error)
             })
         }
 
+        // Dispose of the settings watcher if it exists
+        if (this.settingsWatcher) {
+            this.settingsWatcher.dispose()
+        }
+
+        // Dispose of all other disposables
         for (const disposable of this.disposables) {
             disposable.dispose()
         }
