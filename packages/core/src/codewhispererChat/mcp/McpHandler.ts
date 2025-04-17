@@ -17,10 +17,11 @@ export class McpHandler {
      * @param message The message to parse
      * @returns The tool call details if found, null otherwise
      */
-    parseMcpToolCall(message: string): { serverName: string, toolName: string, args: any } | null {
-        const mcpToolRegex = /<use_mcp_tool>\s*<server_name>(.*?)<\/server_name>\s*<tool_name>(.*?)<\/tool_name>\s*<arguments>([\s\S]*?)<\/arguments>\s*<\/use_mcp_tool>/i
+    parseMcpToolCall(message: string): { serverName: string; toolName: string; args: any } | null {
+        const mcpToolRegex =
+            /<use_mcp_tool>\s*<server_name>(.*?)<\/server_name>\s*<tool_name>(.*?)<\/tool_name>\s*<arguments>([\s\S]*?)<\/arguments>\s*<\/use_mcp_tool>/i
         const match = message.match(mcpToolRegex)
-        
+
         if (match) {
             const [, serverName, toolName, argsStr] = match
             try {
@@ -30,7 +31,7 @@ export class McpHandler {
                 console.error('Failed to parse MCP tool arguments:', e)
             }
         }
-        
+
         return null
     }
 
@@ -44,24 +45,20 @@ export class McpHandler {
     async handleMcpToolCall(serverName: string, toolName: string, args: any): Promise<string> {
         try {
             const result = await this.mcpHub.callTool(serverName, toolName, args)
-            
+
             // Format the response
-            const formattedResponse = result.content
-                .map((item: any) => {
-                    if (item.type === 'text') {
-                        return item.text
-                    } else if (item.type === 'image') {
-                        // Handle image response
-                        return `[Image: ${item.mimeType}]`
-                    } else if (item.type === 'resource' && item.resource) {
-                        // Handle resource response
-                        return `[Resource: ${item.resource.uri}]`
-                    }
-                    return ''
-                })
-                .filter(Boolean)
-                .join('\n\n')
-                
+            const formattedResponse =
+                (result?.isError ? 'Error:\n' : '') +
+                    result?.content
+                        .map((item) => {
+                            if (item.type === 'text') {
+                                return item.text
+                            }
+                            return ''
+                        })
+                        .filter(Boolean)
+                        .join('\n\n') || '(No response)'
+
             return formattedResponse
         } catch (error) {
             return `Error executing MCP tool: ${error instanceof Error ? error.message : String(error)}`
@@ -81,7 +78,7 @@ export class McpHandler {
             const response = await this.handleMcpToolCall(serverName, toolName, args)
             return response
         }
-        
+
         // No MCP calls found
         return null
     }
@@ -91,8 +88,8 @@ export class McpHandler {
      * @returns The MCP system prompt content
      */
     generateMcpSystemPrompt(): string {
-        if (this.mcpHub.getMode() === "off") {
-            return "";
+        if (this.mcpHub.getMode() === 'off') {
+            return ''
         }
 
         let mcpPrompt = `
@@ -117,37 +114,37 @@ Usage:
 }
 </arguments>
 </use_mcp_tool>
-`;
+`
 
         // Add connected servers information
-        const servers = this.mcpHub.getServers();
+        const servers = this.mcpHub.getServers()
         if (servers.length > 0) {
-            mcpPrompt += `\n## Connected MCP Servers\n`;
-            
-            for (const server of servers.filter(s => s.status === "connected")) {
-                const config = JSON.parse(server.config);
-                mcpPrompt += `\n### ${server.name}`;
-                
+            mcpPrompt += `\n## Connected MCP Servers\n`
+
+            for (const server of servers.filter((s) => s.status === 'connected')) {
+                const config = JSON.parse(server.config)
+                mcpPrompt += `\n### ${server.name}`
+
                 if (config.command) {
-                    mcpPrompt += ` (\`${config.command}${config.args && Array.isArray(config.args) ? ` ${config.args.join(" ")}` : ""}\`)`;
+                    mcpPrompt += ` (\`${config.command}${config.args && Array.isArray(config.args) ? ` ${config.args.join(' ')}` : ''}\`)`
                 }
-                
+
                 if (server.tools && server.tools.length > 0) {
-                    mcpPrompt += `\n\n#### Available Tools\n`;
+                    mcpPrompt += `\n\n#### Available Tools\n`
                     for (const tool of server.tools) {
-                        mcpPrompt += `- ${tool.name}: ${tool.description || 'No description'}\n`;
+                        mcpPrompt += `- ${tool.name}: ${tool.description || 'No description'}\n`
                         if (tool.inputSchema) {
-                            mcpPrompt += `    Input Schema:\n    ${JSON.stringify(tool.inputSchema, null, 2).split("\n").join("\n    ")}\n`;
+                            mcpPrompt += `    Input Schema:\n    ${JSON.stringify(tool.inputSchema, null, 2).split('\n').join('\n    ')}\n`
                         }
                     }
                 }
             }
         } else {
-            mcpPrompt += "\n(No MCP servers currently connected)\n";
+            mcpPrompt += '\n(No MCP servers currently connected)\n'
         }
 
         // Add server creation instructions if in full mode
-        if (this.mcpHub.getMode() === "full") {
+        if (this.mcpHub.getMode() === 'full') {
             mcpPrompt += `
 ## Creating an MCP Server
 
@@ -173,9 +170,9 @@ Example MCP settings file:
   }
 }
 \`\`\`
-`;
+`
         }
 
-        return mcpPrompt;
+        return mcpPrompt
     }
 }

@@ -1,21 +1,13 @@
-import * as fs from "fs/promises"
-import * as path from "path"
-import * as os from "os"
-import * as vscode from "vscode"
-import { z } from "zod"
-import {
-    McpMode,
-    McpServer,
-    McpTool,
-    McpToolCallResponse,
-} from "./types"
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
-import {
-    CallToolResultSchema,
-    ListToolsResultSchema,
-} from "@modelcontextprotocol/sdk/types.js"
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import * as os from 'os'
+import * as vscode from 'vscode'
+import { z } from 'zod'
+import { McpMode, McpServer, McpTool, McpToolCallResponse } from './types'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 
 export type McpConnection = {
     server: McpServer
@@ -23,7 +15,7 @@ export type McpConnection = {
     transport?: StdioClientTransport | SSEClientTransport
 }
 
-export type McpTransportType = "stdio" | "sse"
+export type McpTransportType = 'stdio' | 'sse'
 
 export type McpServerConfig = z.infer<typeof ServerConfigSchema>
 
@@ -39,7 +31,7 @@ const SseConfigSchema = BaseConfigSchema.extend({
     url: z.string().url(),
 }).transform((config) => ({
     ...config,
-    transportType: "sse" as const,
+    transportType: 'sse' as const,
 }))
 
 const StdioConfigSchema = BaseConfigSchema.extend({
@@ -48,7 +40,7 @@ const StdioConfigSchema = BaseConfigSchema.extend({
     env: z.record(z.string()).optional(),
 }).transform((config) => ({
     ...config,
-    transportType: "stdio" as const,
+    transportType: 'stdio' as const,
 }))
 
 const ServerConfigSchema = z.union([StdioConfigSchema, SseConfigSchema])
@@ -59,7 +51,7 @@ const McpSettingsSchema = z.object({
 
 export class McpHub {
     private disposables: vscode.Disposable[] = []
-    private callableServerNames: {[key: string]: string} = {}
+    private callableServerNames: { [key: string]: string } = {}
     connections: McpConnection[] = []
     isConnecting: boolean = false
 
@@ -74,7 +66,7 @@ export class McpHub {
     }
 
     getMode(): McpMode {
-        return vscode.workspace.getConfiguration("amazonQ.mcp").get<McpMode>("mode", "full")
+        return vscode.workspace.getConfiguration('amazonQ.mcp').get<McpMode>('mode', 'full')
     }
 
     async getMcpSettingsFilePath(): Promise<string> {
@@ -83,10 +75,10 @@ export class McpHub {
         if (customPath && customPath.trim() !== '') {
             return customPath
         }
-        
+
         // Then check for ~/.aws/amazonq/mcp.json
         const defaultPath = path.join(os.homedir(), '.aws', 'amazonq', 'mcp.json')
-        
+
         try {
             await fs.access(defaultPath)
             return defaultPath
@@ -94,10 +86,7 @@ export class McpHub {
             // If file doesn't exist, create it with empty structure
             try {
                 await fs.mkdir(path.dirname(defaultPath), { recursive: true })
-                await fs.writeFile(
-                    defaultPath,
-                    JSON.stringify({ mcpServers: {} }, null, 2)
-                )
+                await fs.writeFile(defaultPath, JSON.stringify({ mcpServers: {} }, null, 2))
             } catch (err) {
                 console.error('Failed to create default MCP settings file:', err)
             }
@@ -108,7 +97,7 @@ export class McpHub {
     private async readAndValidateMcpSettingsFile(): Promise<z.infer<typeof McpSettingsSchema> | undefined> {
         try {
             const settingsPath = await this.getMcpSettingsFilePath()
-            const content = await fs.readFile(settingsPath, "utf-8")
+            const content = await fs.readFile(settingsPath, 'utf-8')
 
             let config: any
 
@@ -117,7 +106,7 @@ export class McpHub {
                 config = JSON.parse(content)
             } catch (error) {
                 vscode.window.showErrorMessage(
-                    "Invalid MCP settings format. Please ensure your settings follow the correct JSON format."
+                    'Invalid MCP settings format. Please ensure your settings follow the correct JSON format.'
                 )
                 return undefined
             }
@@ -125,13 +114,13 @@ export class McpHub {
             // Validate against schema
             const result = McpSettingsSchema.safeParse(config)
             if (!result.success) {
-                vscode.window.showErrorMessage("Invalid MCP settings schema.")
+                vscode.window.showErrorMessage('Invalid MCP settings schema.')
                 return undefined
             }
 
             return result.data
         } catch (error) {
-            console.error("Failed to read MCP settings:", error)
+            console.error('Failed to read MCP settings:', error)
             return undefined
         }
     }
@@ -143,29 +132,26 @@ export class McpHub {
         }
     }
 
-    private async connectToServer(
-        name: string,
-        config: McpServerConfig
-    ): Promise<void> {
+    private async connectToServer(name: string, config: McpServerConfig): Promise<void> {
         // Remove existing connection if it exists
         this.connections = this.connections.filter((conn) => conn.server.name !== name)
         this.callableServerNames[name.replace(/-/g, '_')] = name
-        
+
         try {
             // Create a client for the MCP server
             const client = new Client(
                 {
-                    name: "AWS-Toolkit-VSCode",
-                    version: "1.0.0", // Should use actual version
+                    name: 'AWS-Toolkit-VSCode',
+                    version: '1.0.0', // Should use actual version
                 },
                 {
                     capabilities: {},
                 }
             )
-            
+
             let transport: StdioClientTransport | SSEClientTransport
-            
-            if (config.transportType === "sse") {
+
+            if (config.transportType === 'sse') {
                 transport = new SSEClientTransport(new URL(config.url), {})
             } else {
                 transport = new StdioClientTransport({
@@ -175,49 +161,49 @@ export class McpHub {
                         ...config.env,
                         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
                     },
-                    stderr: "pipe", // necessary for stderr to be available
+                    stderr: 'pipe', // necessary for stderr to be available
                 })
             }
-            
+
             transport.onerror = async (error) => {
                 console.error(`Transport error for "${name}":`, error)
                 const connection = this.connections.find((conn) => conn.server.name === name)
                 if (connection) {
-                    connection.server.status = "disconnected"
+                    connection.server.status = 'disconnected'
                     this.appendErrorMessage(connection, error.message)
                 }
             }
-            
+
             transport.onclose = async () => {
                 const connection = this.connections.find((conn) => conn.server.name === name)
                 if (connection) {
-                    connection.server.status = "disconnected"
+                    connection.server.status = 'disconnected'
                 }
             }
-            
+
             const connection: McpConnection = {
                 server: {
                     name,
                     config: JSON.stringify(config),
-                    status: "connecting",
+                    status: 'connecting',
                     disabled: config.disabled,
-                    tools: []
+                    tools: [],
                 },
                 client,
-                transport
+                transport,
             }
-            
+
             this.connections.push(connection)
-            
-            if (config.transportType === "stdio") {
+
+            if (config.transportType === 'stdio') {
                 await transport.start()
                 const stderrStream = (transport as StdioClientTransport).stderr
                 if (stderrStream) {
-                    stderrStream.on("data", async (data: Buffer) => {
+                    stderrStream.on('data', async (data: Buffer) => {
                         const output = data.toString()
                         // Check if output contains INFO level log
                         const isInfoLog = /^\s*INFO\b/.test(output)
-                        
+
                         if (isInfoLog) {
                             // Log normal informational messages
                             console.info(`Server "${name}" info:`, output)
@@ -233,20 +219,20 @@ export class McpHub {
                 }
                 transport.start = async () => {} // No-op now, .connect() won't fail
             }
-            
+
             // Connect
             await client.connect(transport)
-            
-            connection.server.status = "connected"
-            connection.server.error = ""
-            
+
+            connection.server.status = 'connected'
+            connection.server.error = ''
+
             // Fetch tools
             connection.server.tools = await this.fetchToolsList(name)
         } catch (error) {
             // Update status with error
             const connection = this.connections.find((conn) => conn.server.name === name)
             if (connection) {
-                connection.server.status = "disconnected"
+                connection.server.status = 'disconnected'
                 this.appendErrorMessage(connection, error instanceof Error ? error.message : String(error))
             }
             throw error
@@ -265,20 +251,18 @@ export class McpHub {
             if (!connection) {
                 throw new Error(`No connection found for server: ${serverName}`)
             }
-            
+
             if (!connection.client) {
                 throw new Error(`MCP client not initialized for server: ${serverName}`)
             }
 
-            const response = await connection.client.request(
-                { method: "tools/list" }, 
-                ListToolsResultSchema, 
-                { timeout: 5000 }
-            )
+            const response = await connection.client.request({ method: 'tools/list' }, ListToolsResultSchema, {
+                timeout: 5000,
+            })
 
             // Get autoApprove settings from the configuration file
             const settingsPath = await this.getMcpSettingsFilePath()
-            const content = await fs.readFile(settingsPath, "utf-8")
+            const content = await fs.readFile(settingsPath, 'utf-8')
             const config = JSON.parse(content)
             const autoApproveConfig = config.mcpServers[serverName]?.autoApprove || []
 
@@ -295,8 +279,6 @@ export class McpHub {
             return []
         }
     }
-
-
 
     async deleteConnection(name: string): Promise<void> {
         const connection = this.connections.find((conn) => conn.server.name === name)
@@ -361,9 +343,9 @@ export class McpHub {
         const connection = this.connections.find((conn) => conn.server.name === serverName)
         const config = connection?.server.config
         if (config) {
-            connection.server.status = "connecting"
-            connection.server.error = ""
-            
+            connection.server.status = 'connecting'
+            connection.server.error = ''
+
             try {
                 await this.deleteConnection(serverName)
                 // Try to connect again using existing config
@@ -377,12 +359,16 @@ export class McpHub {
     }
 
     // Public methods for tool and resource access
-    
+
     async readResource(serverName: string, uri: string): Promise<any> {
         throw new Error('Resources are not supported')
     }
 
-    async callTool(serverName: string, toolName: string, toolArguments?: Record<string, unknown>): Promise<McpToolCallResponse> {
+    async callTool(
+        serverName: string,
+        toolName: string,
+        toolArguments?: Record<string, unknown>
+    ): Promise<McpToolCallResponse> {
         const callableServerName: string = this.callableServerNames[serverName]
         const connection = this.connections.find((conn) => conn.server.name === callableServerName)
         if (!connection) {
@@ -400,8 +386,8 @@ export class McpHub {
         }
 
         // Set default timeout
-        let timeout = 30000 // Default 30 seconds in milliseconds
-        
+        let timeout = 60000 // Default 30 seconds in milliseconds
+
         try {
             // Try to get custom timeout from server config
             const config = JSON.parse(connection.server.config)
@@ -415,11 +401,11 @@ export class McpHub {
 
         return await connection.client.request(
             {
-                method: "tools/call",
+                method: 'tools/call',
                 params: {
                     name: toolName,
                     arguments: toolArguments,
-                }
+                },
             },
             CallToolResultSchema,
             {
@@ -431,11 +417,11 @@ export class McpHub {
     dispose(): void {
         // Clean up connections and watchers
         for (const connection of this.connections) {
-            this.deleteConnection(connection.server.name).catch(error => {
+            this.deleteConnection(connection.server.name).catch((error) => {
                 console.error(`Failed to close connection for ${connection.server.name}:`, error)
             })
         }
-        
+
         for (const disposable of this.disposables) {
             disposable.dispose()
         }

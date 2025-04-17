@@ -15,6 +15,7 @@ import { Database } from '../../../shared/db/chatDb/chatDb'
 import { TabBarButtonClick, SaveChatMessage } from './model'
 import { Conversation, messageToChatItem, Tab } from '../../../shared/db/chatDb/util'
 import { DetailedListItemGroup, MynahIconsType } from '@aws/mynah-ui'
+import { getLogger } from '../../../shared/logger/logger'
 
 export class TabBarController {
     private readonly messenger: Messenger
@@ -22,6 +23,7 @@ export class TabBarController {
     private loadedChats: boolean = false
     private searchTimeout: NodeJS.Timeout | undefined = undefined
     private readonly DebounceTime = 300 // milliseconds
+    private readonly logger = getLogger('chat')
 
     constructor(messenger: Messenger) {
         this.messenger = messenger
@@ -140,6 +142,7 @@ export class TabBarController {
     }
 
     async processTabBarButtonClick(message: TabBarButtonClick) {
+        this.logger.debug(`TabBarController: processTabBarButtonClick called with buttonId: ${message.buttonId}`)
         switch (message.buttonId) {
             case 'history_sheet':
                 await this.historyButtonClicked(message)
@@ -147,6 +150,63 @@ export class TabBarController {
             case 'export_chat':
                 await this.exportChatButtonClicked(message)
                 break
+            case 'mcp_init':
+                await this.openMcpConfigFile()
+                break
+        }
+    }
+
+    private async openMcpConfigFile() {
+        void vscode.window.showInformationMessage('Opening MCP config file...')
+
+        const homedir = require('os').homedir()
+        const mcpConfigPath = `${homedir}/.aws/amazonq/mcp.json`
+
+        try {
+            // Check if the file exists
+            const exists = await fs.exists(mcpConfigPath)
+
+            if (exists) {
+                // Open the existing file
+                this.logger.info('TabBarController: Opening existing MCP config file')
+                const document = await vscode.workspace.openTextDocument(mcpConfigPath)
+                await vscode.window.showTextDocument(document)
+                void vscode.window.showInformationMessage('MCP config file opened successfully')
+            } else {
+                // Create the directory structure if it doesn't exist
+                this.logger.info('TabBarController: Creating MCP config file')
+                const dirPath = `${homedir}/.aws/amazonq`
+                await fs.mkdir(dirPath)
+
+                // Create a default config file
+                const defaultConfig = {
+                    mcpServers: {
+                        'example-server': {
+                            command: 'node',
+                            args: ['/path/to/server.js'],
+                            env: {
+                                API_KEY: 'your-api-key',
+                            },
+                            autoApprove: ['safe-tool-name'],
+                            disabled: false,
+                        },
+                    },
+                }
+
+                // Write the default config
+                await fs.writeFile(mcpConfigPath, JSON.stringify(defaultConfig, null, 2))
+
+                // Open the newly created file
+                this.logger.info('TabBarController: Opening newly created MCP config file')
+                const document = await vscode.workspace.openTextDocument(mcpConfigPath)
+                await vscode.window.showTextDocument(document)
+                void vscode.window.showInformationMessage('MCP config file created and opened successfully')
+            }
+        } catch (error) {
+            this.logger.error('TabBarController: Error opening MCP config file:', error)
+            void vscode.window.showErrorMessage(
+                `Failed to open MCP config file: ${error instanceof Error ? error.message : String(error)}`
+            )
         }
     }
 

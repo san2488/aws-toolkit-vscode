@@ -1012,6 +1012,11 @@ export const createMynahUI = (
             texts: uiComponentsTexts,
             tabBarButtons: [
                 {
+                    id: 'mcp_init',
+                    icon: MynahIcons.OK_CIRCLED,
+                    description: 'MCP Servers\nClick to configure',
+                },
+                {
                     id: 'history_sheet',
                     icon: MynahIcons.HISTORY,
                     description: 'View chat history',
@@ -1020,11 +1025,6 @@ export const createMynahUI = (
                     id: 'export_chat',
                     icon: MynahIcons.EXTERNAL,
                     description: 'Export chat',
-                },
-                {
-                    id: 'mcp_init',
-                    icon: MynahIcons.OK_CIRCLED,
-                    description: 'MCP Servers',
                 },
             ],
         },

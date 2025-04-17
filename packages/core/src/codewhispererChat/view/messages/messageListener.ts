@@ -141,7 +141,21 @@ export class UIMessageListener {
             case 'detailed-list-action-click':
                 this.processDetailedListActionClick(msg)
                 break
+            case 'open-mcp-config':
+                this.processMcpConfig(msg)
+                break
         }
+    }
+
+    private processMcpConfig(msg: any) {
+        getLogger('chat').info('UIMessageListener: Received open-mcp-config command')
+        if (msg.logMessage) {
+            getLogger('chat').info(msg.logMessage)
+        }
+        this.chatControllerMessagePublishers.processTabBarButtonClick.publish({
+            tabID: msg.tabID,
+            buttonId: 'mcp_init',
+        })
     }
 
     private processDetailedListFilterChange(msg: any) {

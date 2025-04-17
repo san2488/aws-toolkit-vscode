@@ -8,10 +8,10 @@ export const DEFAULT_MCP_TIMEOUT_SECONDS = 30
 export const MIN_MCP_TIMEOUT_SECONDS = 5
 
 // MCP server connection status
-export type McpServerStatus = "connected" | "connecting" | "disconnected"
+export type McpServerStatus = 'connected' | 'connecting' | 'disconnected'
 
 // MCP mode
-export type McpMode = "full" | "basic" | "off"
+export type McpMode = 'full' | 'basic' | 'off'
 
 // MCP tool definition
 export interface McpTool {
@@ -32,19 +32,30 @@ export interface McpServer {
 }
 
 // MCP tool call response
-export interface McpToolCallResponse {
-    content: Array<{
-        type: string
-        text?: string
-        mimeType?: string
-        resource?: {
-            uri: string
-        }
-    }>
+export type McpToolCallResponse = {
+    content: Array<
+        | {
+              type: 'text'
+              text: string
+          }
+        | {
+              type: 'image'
+              data: string
+              mimeType: string
+          }
+        | {
+              type: 'resource'
+              resource: {
+                  uri: string
+                  mimeType?: string
+                  text?: string
+                  blob?: string
+              }
+          }
+        | {
+              type: 'audio'
+              data: string
+          }
+    >
     isError?: boolean
-}
-
-// Helper function to convert seconds to milliseconds
-export function secondsToMs(seconds: number): number {
-    return seconds * 1000
 }

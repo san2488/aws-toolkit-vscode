@@ -708,13 +708,24 @@ export class Connector {
     }
 
     onTabBarButtonClick = async (tabId: string, buttonId: string, eventId?: string) => {
-        this.sendMessageToExtension({
-            command: 'tab-bar-button-clicked',
-            buttonId,
-            type: '',
-            tabID: tabId,
-            tabType: 'cwc',
-        })
+        // We need to add logging here, but we don't have direct access to the logger in this file
+        // We'll use the sendMessageToExtension to log from the extension side
+        if (buttonId === 'mcp_init') {
+            // Handle the MCP Servers button click to open the mcp.json file
+            this.sendMessageToExtension({
+                command: 'open-mcp-config',
+                tabID: tabId,
+                tabType: 'cwc',
+            })
+        } else {
+            this.sendMessageToExtension({
+                command: 'tab-bar-button-clicked',
+                buttonId,
+                type: '',
+                tabID: tabId,
+                tabType: 'cwc',
+            })
+        }
     }
 
     onCustomFormAction = (
