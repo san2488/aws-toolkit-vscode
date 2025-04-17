@@ -59,3 +59,16 @@ export type McpToolCallResponse = {
     >
     isError?: boolean
 }
+
+export interface InvokeInput {
+    readonly toolName: string
+    readonly args: any
+}
+export const MCP_TOOL_NAME_PREFIX = 'mcp_' /**
+ * Interface for MCP Hub that provides tools
+ */
+
+export interface McpToolProvider {
+    getServers(): McpServer[]
+    callTool(serverName: string, toolName: string, args: any): Promise<McpToolCallResponse>
+}

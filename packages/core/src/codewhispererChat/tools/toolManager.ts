@@ -6,24 +6,16 @@
 import { Tool } from '@amzn/codewhisperer-streaming'
 import toolsJson from './tool_index.json'
 import { getLogger } from '../../shared/logger/logger'
-import { McpToolCallResponse } from '../mcp'
-
-/**
- * Interface for MCP Hub that provides tools
- */
-export interface IMcpToolProvider {
-    getServers(): any[]
-callTool(serverName: string, toolName: string, args: any): Promise<McpToolCallResponse>
-}
+import { McpToolCallResponse, McpToolProvider, MCP_TOOL_NAME_PREFIX } from '../mcp/types'
 
 /**
  * Manages tools from both local definitions and MCP servers
  */
 export class ToolManager {
     private static instance: ToolManager
-    private mcpToolProvider?: IMcpToolProvider
-    private cachedTools: Tool[] = []
-    private cachedNoWriteTools: Tool[] = []
+    private mcpToolProvider?: McpToolProvider
+    private nativeTools: Tool[] = []
+    private mcpTools: Tool[] = []
     private lastCacheTime: number = 0
     private readonly CACHE_TTL_MS = 3000 // 30 seconds cache TTL
 
@@ -33,8 +25,8 @@ export class ToolManager {
     private constructor() {
         // Load static tools immediately
         this.loadStaticTools()
-        
-        getLogger().info(`ToolManager: Initialized with ${this.cachedTools.length} static tools`)
+
+        getLogger().info(`ToolManager: Initialized with ${this.getToolsSync().length} static tools`)
     }
 
     /**
@@ -51,52 +43,21 @@ export class ToolManager {
      * Set the MCP tool provider and load MCP tools
      * @param mcpToolProvider The MCP tool provider
      */
-    public setMcpToolProvider(mcpToolProvider: IMcpToolProvider): void {
+    public setMcpToolProvider(mcpToolProvider: McpToolProvider): void {
         this.mcpToolProvider = mcpToolProvider
-        
+
         // Load MCP tools immediately when provider is set
         this.loadMcpTools()
-            .then(mcpTools => {
-                // Add MCP tools to cached tools
-                this.cachedTools = [...this.cachedTools.filter(tool => !tool.toolSpecification?.name?.startsWith('mcp_')), ...mcpTools]
-                
-                // Update no-write tools
-                this.updateNoWriteTools()
-                
-                // Update cache timestamp
-                this.lastCacheTime = Date.now()
-                
-                getLogger().info(`ToolManager: Added ${mcpTools.length} MCP tools, total tools: ${this.cachedTools.length}`)
-            })
-            .catch(error => {
-                getLogger().error(`ToolManager: Failed to load MCP tools: ${error}`)
-            })
     }
 
-    /**
-     * Invalidate the tool cache and reload all tools
-     */
-    public invalidateCache(): void {
-        getLogger().info('ToolManager: Invalidating tool cache')
-        
-        // Reset cache timestamp to force reload
-        this.lastCacheTime = 0
-        
-        // Reload all tools
+    private async reloadAllTools() {
         this.loadStaticTools()
-        
+
         // Reload MCP tools if provider is available
         if (this.mcpToolProvider) {
             this.loadMcpTools()
-                .then(mcpTools => {
-                    this.cachedTools = [...this.cachedTools.filter(tool => !tool.toolSpecification?.name?.startsWith('mcp_')), ...mcpTools]
-                    this.updateNoWriteTools()
-                    this.lastCacheTime = Date.now()
-                    getLogger().info(`ToolManager: Cache refreshed with ${this.cachedTools.length} total tools`)
-                })
-                .catch(error => {
-                    getLogger().error(`ToolManager: Failed to refresh MCP tools: ${error}`)
-                })
+        } else {
+            this.mcpTools = []
         }
     }
 
@@ -107,35 +68,26 @@ export class ToolManager {
      */
     public async getTools(forceRefresh: boolean = false): Promise<Tool[]> {
         const now = Date.now()
-        
+
         // Check if cache is valid and no refresh is forced
         if (!forceRefresh && now - this.lastCacheTime < this.CACHE_TTL_MS) {
-            return this.cachedTools
+            return this.getToolsSync()
         }
-        
-        // Reload static tools
-        this.loadStaticTools()
-        
-        // Reload MCP tools if provider is available
-        if (this.mcpToolProvider) {
-            const mcpTools = await this.loadMcpTools()
-            this.cachedTools = [...this.cachedTools.filter(tool => !tool.toolSpecification?.name?.startsWith('mcp_')), ...mcpTools]
-            this.updateNoWriteTools()
-        }
-        
+
+        // Reload all tools
+        await this.reloadAllTools()
+
         this.lastCacheTime = now
-        return this.cachedTools
+        return this.getToolsSync()
     }
 
     /**
      * Get tools that don't modify files (no write tools)
-     * @param forceRefresh Whether to force a refresh of the tools
      * @returns Array of tools that don't modify files
      */
     public async getNoWriteTools(forceRefresh: boolean = false): Promise<Tool[]> {
         // Ensure tools are up to date
-        await this.getTools(forceRefresh)
-        return this.cachedNoWriteTools
+        return this.getTools(forceRefresh).then((tools) => tools.filter((tool) => this.isNoWriteTool(tool)))
     }
 
     /**
@@ -143,12 +95,7 @@ export class ToolManager {
      * @returns Array of tools
      */
     public getToolsSync(): Tool[] {
-        // If cache is expired, trigger a refresh in the background
-        if (Date.now() - this.lastCacheTime >= this.CACHE_TTL_MS) {
-            void this.getTools(true)
-        }
-        
-        return this.cachedTools
+        return [...this.nativeTools, ...this.mcpTools]
     }
 
     /**
@@ -156,21 +103,19 @@ export class ToolManager {
      * @returns Array of tools excluding write tools
      */
     public getNoWriteToolsSync(): Tool[] {
-        // If cache is expired, trigger a refresh in the background
-        if (Date.now() - this.lastCacheTime >= this.CACHE_TTL_MS) {
-            void this.getTools(true)
-        }
-        
-        return this.cachedNoWriteTools
+        return this.getToolsSync().filter((tool) => !this.isNoWriteTool(tool))
     }
 
     /**
      * Check if a tool is an MCP tool
-     * @param toolName The name of the tool
+     * @param tool The name of the tool
      * @returns Whether the tool is an MCP tool
      */
-    public isMcpTool(toolName: string): boolean {
-        return toolName.startsWith('mcp_')
+    public isMcpTool(tool: string | Tool): boolean {
+        if (typeof tool === 'object') {
+            return tool.toolSpecification?.name?.startsWith(MCP_TOOL_NAME_PREFIX) ?? false
+        }
+        return tool.startsWith(MCP_TOOL_NAME_PREFIX)
     }
 
     /**
@@ -222,60 +167,55 @@ export class ToolManager {
      */
     private loadStaticTools(): void {
         getLogger().info('ToolManager: Loading static tools from tool_index.json')
-        
-        const staticTools = Object.entries(toolsJson).map(([, toolSpec]) => ({
+
+        // if all native tools are not static, then this must change
+        this.nativeTools = Object.entries(toolsJson).map(([, toolSpec]) => ({
             toolSpecification: {
                 ...toolSpec,
                 inputSchema: { json: toolSpec.inputSchema },
             },
         }))
-        
-        // Keep any existing MCP tools
-        const mcpTools = this.cachedTools.filter(tool => 
-            tool.toolSpecification?.name?.startsWith('mcp_')
-        )
-        
-        // Update cached tools with static tools and existing MCP tools
-        this.cachedTools = [...staticTools, ...mcpTools]
-        
-        // Update no-write tools
-        this.updateNoWriteTools()
-        
-        getLogger().info(`ToolManager: Loaded ${staticTools.length} static tools`)
+
+        getLogger().info(`ToolManager: Loaded ${this.nativeTools.length} static tools`)
     }
 
     /**
      * Load MCP tools from the MCP tool provider
-     * @private
      */
-    private async loadMcpTools(): Promise<Tool[]> {
+    private async loadMcpTools() {
         if (!this.mcpToolProvider) {
             getLogger().info('ToolManager: No MCP tool provider available')
             return []
         }
-        
+
         try {
             getLogger().info('ToolManager: Fetching MCP servers from provider')
             const mcpServers = this.mcpToolProvider.getServers()
             getLogger().info(`ToolManager: Found ${mcpServers.length} MCP servers`)
-            
+
             const mcpTools: Tool[] = []
-            
+
             for (const server of mcpServers) {
                 getLogger().info(`ToolManager: Processing server: ${server.name || 'unnamed'}`)
-                
+
                 if (!server.tools || !Array.isArray(server.tools)) {
                     getLogger().info(`ToolManager: Server ${server.name || 'unnamed'} has no valid tools property`)
                     continue
                 }
-                
+
                 getLogger().info(`ToolManager: Server ${server.name || 'unnamed'} has ${server.tools.length} tools`)
-                
+                // Agent seems to ignore if we have too many tools. Limiting each server to 10 tools
+                const MAX_TOOLS = 10
+                let onboardedToolCount = 0
                 for (const tool of server.tools) {
+                    if (onboardedToolCount > MAX_TOOLS) {
+                        continue
+                    }
+                    onboardedToolCount += 1
                     if (tool.name) {
                         const toolName = `mcp_${server.name}___${tool.name}`.replace(/-/, '_')
                         getLogger().info(`ToolManager: Adding MCP tool: ${toolName}`)
-                        
+
                         mcpTools.push({
                             toolSpecification: {
                                 name: toolName,
@@ -284,35 +224,25 @@ export class ToolManager {
                             },
                         })
                     } else {
-                        getLogger().info(`ToolManager: Skipping tool without name in server ${server.name || 'unnamed'}`)
+                        getLogger().info(
+                            `ToolManager: Skipping tool without name in server ${server.name || 'unnamed'}`
+                        )
                     }
                 }
             }
-            
-            return mcpTools
+
+            this.mcpTools = mcpTools
         } catch (error) {
             getLogger().error(`ToolManager: Failed to get MCP tools: ${error}`)
-            return []
         }
     }
 
-    /**
-     * Update the no-write tools cache based on current tools
-     * @private
-     */
-    private updateNoWriteTools(): void {
-        this.cachedNoWriteTools = this.cachedTools.filter(tool => {
-            const toolName = tool.toolSpecification?.name || ''
-            
-            // If it's an MCP tool, include it (we assume MCP tools are safe by default)
-            if (toolName.startsWith('mcp_')) {
-                return true
-            }
-            
-            // Filter out known write tools
-            return !['fsWrite', 'executeBash'].includes(toolName)
-        })
-        
-        getLogger().info(`ToolManager: Updated no-write tools cache (${this.cachedNoWriteTools.length} tools)`)
+    private isNoWriteTool(tool: string | Tool) {
+        const toolName = typeof tool === 'string' ? tool : tool.toolSpecification?.name || ''
+        if (this.isMcpTool(toolName)) {
+            // TODO: revisit how MCP tools should be marked writable
+            return true
+        }
+        return ['fsWrite', 'executeBash'].includes(toolName)
     }
 }

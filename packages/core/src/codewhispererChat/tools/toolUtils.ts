@@ -17,6 +17,7 @@ import {
 import { ListDirectory, ListDirectoryParams } from './listDirectory'
 import { getLogger } from '../../shared/logger/logger'
 import { InvocableMcpTool } from './mcpTool'
+import { MCP_TOOL_NAME_PREFIX } from '../mcp'
 
 export enum ToolType {
     FsRead = 'fsRead',
@@ -175,10 +176,10 @@ export class ToolUtils {
                         tool: new ListDirectory(value.input as unknown as ListDirectoryParams),
                     }
                 default:
-                    if (value.name && value.name.startsWith('mcp_')) {
+                    if (value.name && value.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
                         return {
                             type: ToolType.McpTool,
-                            tool: new InvocableMcpTool({ toolName: value.name, args: value.input })
+                            tool: new InvocableMcpTool({ toolName: value.name, args: value.input }),
                         }
                     }
                     getLogger().warn(`ToolUtils: Unsupported tool requested: "${value.name}"`)

@@ -3,11 +3,12 @@ import * as path from 'path'
 import * as os from 'os'
 import * as vscode from 'vscode'
 import { z } from 'zod'
-import { McpMode, McpServer, McpTool, McpToolCallResponse } from './types'
+import { McpServer, McpTool, McpToolCallResponse, McpToolProvider } from './types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { ToolManager } from '../tools/toolManager'
 
 export type McpConnection = {
     server: McpServer
@@ -49,24 +50,20 @@ const McpSettingsSchema = z.object({
     mcpServers: z.record(ServerConfigSchema),
 })
 
-export class McpHub {
+export class McpHub implements McpToolProvider {
     private disposables: vscode.Disposable[] = []
     private callableServerNames: { [key: string]: string } = {}
-    connections: McpConnection[] = []
+    private connections: McpConnection[] = []
     isConnecting: boolean = false
 
     constructor(clientVersion: string) {
-        // this.watchMcpSettingsFile()
+        this.watchMcpSettingsFile()
         this.initializeMcpServers()
     }
 
     getServers(): McpServer[] {
         // Only return enabled servers
         return this.connections.filter((conn) => !conn.server.disabled).map((conn) => conn.server)
-    }
-
-    getMode(): McpMode {
-        return vscode.workspace.getConfiguration('amazonQ.mcp').get<McpMode>('mode', 'full')
     }
 
     async getMcpSettingsFilePath(): Promise<string> {
@@ -128,7 +125,10 @@ export class McpHub {
     private async initializeMcpServers(): Promise<void> {
         const settings = await this.readAndValidateMcpSettingsFile()
         if (settings) {
-            await this.updateServerConnections(settings.mcpServers)
+            await this.updateServerConnections(settings.mcpServers).then(() => {
+                const toolManager = ToolManager.getInstance()
+                toolManager.setMcpToolProvider(this)
+            })
         }
     }
 

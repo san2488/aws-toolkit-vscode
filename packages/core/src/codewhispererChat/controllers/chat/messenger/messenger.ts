@@ -71,6 +71,7 @@ import { ConversationTracker } from '../../../storages/conversationTracker'
 import { waitTimeout, Timeout } from '../../../../shared/utilities/timeoutUtils'
 import { FsReadParams } from '../../../tools/fsRead'
 import { ListDirectoryParams } from '../../../tools/listDirectory'
+import { MCP_TOOL_NAME_PREFIX } from '../../../mcp'
 
 export type StaticTextResponseType = 'quick-action-help' | 'onboarding-help' | 'transform' | 'help'
 
@@ -200,7 +201,6 @@ export class Messenger {
         triggerID: string,
         triggerPayload: TriggerPayload
     ) {
-        getLogger().info("Sending AIResponse again");
         let message = ''
         const messageID = response.$metadata.requestId ?? ''
         let codeReference: CodeReference[] = []
@@ -241,7 +241,6 @@ export class Messenger {
 
         await waitTimeout(
             async () => {
-                getLogger().info("in waitTimeout")
                 for await (const chatEvent of response.message!) {
                     if (this.isTriggerCancelled(triggerID)) {
                         return
@@ -299,20 +298,17 @@ export class Messenger {
                                 throw error
                             }
                             const toolManager = ToolManager.getInstance()
-                            getLogger().info("got toolmanager")
-                            const availableTools = await (session.pairProgrammingModeOn ? 
-                                toolManager.getTools() : 
-                                toolManager.getNoWriteTools())
+                            const availableTools = await (session.pairProgrammingModeOn
+                                ? toolManager.getTools()
+                                : toolManager.getNoWriteTools())
                             getLogger().info(`Available tools count: ${availableTools.length}`)
-                            
+
                             // Log available tool names to help debug MCP tool discovery
-                            const availableToolsNames = availableTools.map(
-                                (item) => item.toolSpecification?.name
-                            )
+                            const availableToolsNames = availableTools.map((item) => item.toolSpecification?.name)
                             getLogger().info(`Available tool names: ${JSON.stringify(availableToolsNames)}`)
-                            
+
                             // Check if the requested tool is an MCP tool
-                            if (toolUse.name && toolUse.name.startsWith('mcp_')) {
+                            if (toolUse.name && toolUse.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
                                 getLogger().info(`Messenger: Attempting to use MCP tool: "${toolUse.name}"`)
                                 // Allow MCP tools to proceed even if not in availableToolsNames
                                 // They will be handled by the McpToolExecutor in toolUtils.ts

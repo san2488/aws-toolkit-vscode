@@ -1,38 +1,22 @@
-import { McpToolExecutor } from './mcpToolExecutor'
 import { Writable } from 'stream'
 import { InvokeOutput, OutputKind } from './toolShared'
 import { McpToolCallResponse } from '../mcp'
+import { InvokeInput as InvokeMcpParams } from '../mcp/types'
+import { ToolkitError, getLogger } from '../../shared'
+import { ToolManager } from './toolManager'
 
-export interface McpToolParams {
-    readonly toolName: string
-    readonly args: any
-}
-
-/**
- * TODO: this class is not needed. use McpHub itself with it's `handleMcpToolCall` method
- */
 export class InvocableMcpTool {
     readonly name: string
-    constructor(private readonly mcpToolParams: McpToolParams) {
+    constructor(private readonly mcpToolParams: InvokeMcpParams) {
         this.name = mcpToolParams.toolName
     }
     public async invoke(updates?: Writable): Promise<InvokeOutput> {
         try {
-            const response: McpToolCallResponse = await McpToolExecutor.execute(
+            const response: McpToolCallResponse = await this.execute(
                 this.mcpToolParams.toolName,
                 this.mcpToolParams.args
             )
-            const formattedResponse =
-                (response?.isError ? 'Error:\n' : '') +
-                    response?.content
-                        .map((item) => {
-                            if (item.type === 'text') {
-                                return item.text
-                            }
-                            return ''
-                        })
-                        .filter(Boolean)
-                        .join('\n\n') || '(No response)'
+            const formattedResponse = this.formatResponse(response)
             return {
                 output: {
                     kind: OutputKind.Text, // todo: verify type
@@ -51,6 +35,21 @@ export class InvocableMcpTool {
         }
     }
 
+    private formatResponse(response: McpToolCallResponse) {
+        return (
+            (response?.isError ? 'Error:\n' : '') +
+                response?.content
+                    .map((item) => {
+                        if (item.type === 'text') {
+                            return item.text
+                        }
+                        return ''
+                    })
+                    .filter(Boolean)
+                    .join('\n\n') || '(No response)'
+        )
+    }
+
     public async validate(): Promise<void> {}
 
     public queueDescription(updates: Writable): void {
@@ -58,5 +57,16 @@ export class InvocableMcpTool {
             'Running tool `' + this.name + '` with params `(' + JSON.stringify(this.mcpToolParams.args) + ')`'
         )
         updates.end()
+    }
+
+    private async execute(toolName: string, args: any): Promise<McpToolCallResponse> {
+        const toolManager = ToolManager.getInstance()
+
+        if (!toolManager.isMcpTool(toolName)) {
+            throw new ToolkitError(`Not an MCP tool: ${toolName}`)
+        }
+
+        getLogger().info(`Executing MCP tool: ${toolName} with args: ${JSON.stringify(args)}`)
+        return await toolManager.executeMcpTool(toolName, args)
     }
 }

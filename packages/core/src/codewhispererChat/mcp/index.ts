@@ -5,6 +5,4 @@
 
 export * from './types'
 export * from './McpHub'
-export * from './McpHandler'
-export * from './McpToolHandler'
 export * from './activation'
