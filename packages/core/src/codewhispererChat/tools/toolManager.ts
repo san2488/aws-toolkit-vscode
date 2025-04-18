@@ -205,15 +205,16 @@ export class ToolManager {
 
                 getLogger().info(`ToolManager: Server ${server.name || 'unnamed'} has ${server.tools.length} tools`)
                 // Agent seems to ignore if we have too many tools. Limiting each server to 10 tools
-                const MAX_TOOLS = 10
+                const MAX_TOOLS = 40
                 let onboardedToolCount = 0
                 for (const tool of server.tools) {
                     if (onboardedToolCount > MAX_TOOLS) {
-                        continue
+                        break
                     }
                     onboardedToolCount += 1
                     if (tool.name) {
-                        const toolName = `mcp_${server.name}___${tool.name}`.replaceAll(/-/, '_')
+                        // TODO: make this more robust so that it enforces all the API constraints not just for `-`
+                        const toolName = `mcp_${server.name}___${tool.name}`.replaceAll(/-/g, '_')
                         getLogger().info(`ToolManager: Adding MCP tool: ${toolName}`)
 
                         mcpTools.push({
