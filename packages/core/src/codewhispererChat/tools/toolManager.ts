@@ -213,7 +213,7 @@ export class ToolManager {
                     }
                     onboardedToolCount += 1
                     if (tool.name) {
-                        const toolName = `mcp_${server.name}___${tool.name}`.replace(/-/, '_')
+                        const toolName = `mcp_${server.name}___${tool.name}`.replaceAll(/-/, '_')
                         getLogger().info(`ToolManager: Adding MCP tool: ${toolName}`)
 
                         mcpTools.push({
